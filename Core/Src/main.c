@@ -1,4 +1,4 @@
-
+// update relay and touch sensor
 #include "main.h"
 #include "MY_NRF24.h"
 
