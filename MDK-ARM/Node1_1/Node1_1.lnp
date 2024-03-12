@@ -1,0 +1,25 @@
+--cpu Cortex-M3
+"node1_1\startup_stm32f103xb.o"
+"node1_1\main.o"
+"node1_1\stm32f1xx_it.o"
+"node1_1\stm32f1xx_hal_msp.o"
+"node1_1\stm32f1xx_hal_gpio_ex.o"
+"node1_1\stm32f1xx_hal_spi.o"
+"node1_1\stm32f1xx_hal.o"
+"node1_1\stm32f1xx_hal_rcc.o"
+"node1_1\stm32f1xx_hal_rcc_ex.o"
+"node1_1\stm32f1xx_hal_gpio.o"
+"node1_1\stm32f1xx_hal_dma.o"
+"node1_1\stm32f1xx_hal_cortex.o"
+"node1_1\stm32f1xx_hal_pwr.o"
+"node1_1\stm32f1xx_hal_flash.o"
+"node1_1\stm32f1xx_hal_flash_ex.o"
+"node1_1\stm32f1xx_hal_exti.o"
+"node1_1\stm32f1xx_hal_tim.o"
+"node1_1\stm32f1xx_hal_tim_ex.o"
+"node1_1\system_stm32f1xx.o"
+"node1_1\my_nrf24.o"
+--strict --scatter "Node1_1\Node1_1.sct"
+--summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
+--info sizes --info totals --info unused --info veneers
+--list "Node1_1.map" -o Node1_1\Node1_1.axf
