@@ -11,14 +11,24 @@ typedef struct {
 	float CO2;
 } Data_Air_t;
 
+typedef struct {
+	char ID;
+	uint8_t Button1;
+	uint8_t Button2;
+}Data_Button_t;
 
 uint64_t Address_GateWay = 0x1122334411;
-char myRx_Data[32];
-
 uint64_t Address_NodeAir = 0x1122334422;
 
+//Sau khi mat dien se tu dong gui lai den gateway de dong bo voi Inventor
+_Bool Click_On = 1;
+_Bool ReTransmit = 1;
 
-static uint32_t TimeOut;
+
+Data_Air_t Value_Air;
+Data_Button_t Value_Button;
+
+static uint32_t TimeOut1, TimeOut2;
 
 /* USER CODE BEGIN PV */
 
@@ -29,8 +39,9 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI2_Init(void);
 /* USER CODE BEGIN PFP */
-
+void Read_And_Control(void);
 /* USER CODE END PFP */
+
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
@@ -42,6 +53,7 @@ static void MX_SPI2_Init(void);
   * @retval int
   */
 int main(void)
+
 {
   HAL_Init();
   SystemClock_Config();
@@ -55,37 +67,58 @@ int main(void)
 	NRF24_SetChannel(52);
 	NRF24_SetDataRate(RF24_250KBPS);
 	NRF24_SetPALevel(RF24_PA_0dB);
+	NRF24_EnableDynamicPayloads();
 	NRF24_SetAutoAck(true);
+	NRF24_SetRetries(10,15);
 	NRF24_StartListening();
 	
-	Data_Air_t Value_Air;
-	TimeOut = HAL_GetTick();
-	uint8_t count = 0;
+	
+
+	TimeOut1 = HAL_GetTick();
+	
   while (1)
   {
     /* USER CODE END WHILE */
 		// Wait GateWay send data
-		if(NRF24_Available())
-		{
-			NRF24_Read(myRx_Data, 32);
+		if(NRF24_Available()){
+			uint8_t u8Length;
+			u8Length = NRF24_GetDynamicPayloadSize();
+			char *myRX_Data = (char*)calloc(u8Length, sizeof(char));
 			
-			if(myRx_Data[0] == 'B')	// From GateWay
-			{
-				HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+			if( myRX_Data != NULL) {
+				NRF24_Read(myRX_Data, u8Length);
+			
+				if(myRX_Data[0] == 'D') {	// From GateWay
+					HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+					if(myRX_Data[1] == 1) HAL_GPIO_WritePin(Relay_1_GPIO_Port, Relay_1_Pin, GPIO_PIN_RESET);
+					else 							HAL_GPIO_WritePin(Relay_1_GPIO_Port, Relay_1_Pin, GPIO_PIN_SET);
+				
+					if(myRX_Data[2] == 1) HAL_GPIO_WritePin(Relay_2_GPIO_Port, Relay_2_Pin, GPIO_PIN_RESET);
+					else							HAL_GPIO_WritePin(Relay_2_GPIO_Port, Relay_2_Pin, GPIO_PIN_SET);
+
+				}
+				if(myRX_Data[0] == 'C'){	// From Node Air
+					memcpy(&Value_Air, myRX_Data, sizeof(Value_Air));
+					HAL_Delay(5);
+					Value_Air.ID = 'B';
+					NRF24_StopListening();
+					NRF24_Write(&Value_Air, sizeof(Value_Air));
+					NRF24_StartListening();	
+				}
 			}
-			if(myRx_Data[0] == 'C')	// From Node Air
-			{
-				memcpy(&Value_Air, myRx_Data, sizeof(Value_Air));
-			}
+			free(myRX_Data);
 		}
-		if( (uint32_t) (HAL_GetTick() - TimeOut) > 500)
-		{
+		// Neu node 1 co dien nhung node gateway chua co dien thi bien ReTransmit se bang 0 va se gui lai trong 500ms
+		if( (Click_On == 1 || ReTransmit == 0) && ((uint32_t)(HAL_GetTick() - TimeOut2 > 500)) ){
+			Value_Button.ID = 'D';
 			NRF24_StopListening();
-			Value_Air.ID = 'B';
-			NRF24_Write(&Value_Air, 32);
+			ReTransmit = NRF24_Write(&Value_Button, sizeof(Value_Button));
 			NRF24_StartListening();
-			TimeOut = HAL_GetTick();
+			Click_On = 0;
+			TimeOut2 = HAL_GetTick();
 		}
+		
+		Read_And_Control();
 
 	
     /* USER CODE BEGIN 3 */
@@ -191,10 +224,15 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOA, SPI2_CS_Pin|SPI2_CE_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pins : Touch_1_Pin Touch_2_Pin */
-  GPIO_InitStruct.Pin = Touch_1_Pin|Touch_2_Pin;
+  GPIO_InitStruct.Pin = Touch_1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  
+    GPIO_InitStruct.Pin = Touch_2_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : Relay_1_Pin Relay_2_Pin */
   GPIO_InitStruct.Pin = Relay_1_Pin|Relay_2_Pin;
@@ -219,7 +257,37 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void Read_And_Control(void)
+{
+	static _Bool States_Old_Button_1, States_Old_Button_2;
+	if(Touch_Relay_1){
+		if(Touch_Relay_1 && !States_Old_Button_1){
+			// Reverse Relay 1
+			HAL_GPIO_TogglePin(Relay_1_GPIO_Port, Relay_1_Pin);
+			if( HAL_GPIO_ReadPin(Relay_1_GPIO_Port, Relay_1_Pin) == 0){
+				Value_Button.Button1 = 1;
+			} else {
+				Value_Button.Button1 = 0;
+			}
+			Click_On = 1;
+		}
+	}
+	States_Old_Button_1 = Touch_Relay_1;
+	
+	if(Touch_Relay_2){
+		if(Touch_Relay_2 && !States_Old_Button_2){
+			// Reverse Relay 2
+			HAL_GPIO_TogglePin(Relay_2_GPIO_Port, Relay_2_Pin);
+			if( HAL_GPIO_ReadPin(Relay_2_GPIO_Port, Relay_2_Pin) == 0){
+				Value_Button.Button2 = 1;
+			} else {
+				Value_Button.Button2 = 0;
+			}
+			Click_On = 1;
+		}
+	}
+	States_Old_Button_2 = Touch_Relay_2;
+}
 /* USER CODE END 4 */
 
 /**
